@@ -1,9 +1,8 @@
 import sys, os
 
-sys.argv.pop(0)
-if len(sys.argv) != 5:
-    print('Wrong Input')
-    print('Python <Python Script> <c2s> <s2c> <RSA Key> <ClientPlaintxt> <ServerPlaintxt>')
+if len(sys.argv) != 6:
+    print('Usage : ')
+    print('    Python ' + sys.argv[0] + ' <c2s> <s2c> <RSA Key> <ClientPlaintxt> <ServerPlaintxt>')
     exit()
 
 for index in range(0, 3):
@@ -12,11 +11,11 @@ for index in range(0, 3):
         exit()
 
 print('Files inputed.')
-pc2s = sys.argv[0]
-ps2c = sys.argv[1]
-pkey = sys.argv[2]
-pcpt = sys.argv[3]
-pspt = sys.argv[4]
+pc2s = sys.argv[1]
+ps2c = sys.argv[2]
+pkey = sys.argv[3]
+pcpt = sys.argv[4]
+pspt = sys.argv[5]
 
 #define
 mac_key_length = 20
@@ -83,7 +82,7 @@ def HandshakeMsg(code):
 def C2S(code):
     ClientRandom = ''
     Premasterkey = ''
-    ApplicationData = ''
+    ApplicationData = []
     while(len(code) != 0):
         try:
             Type = int(code[:2], 16)
@@ -97,7 +96,7 @@ def C2S(code):
                 elif Htype == HandshakeType.client_key_exchange:
                     Premasterkey += ClientKeyExchange_getPremasterSecert(val)
             elif Type == ContentType.application_data:
-                ApplicationData += Detail
+                ApplicationData += [Detail]
             code = code[10 + Length * 2:]
         except:
             break
@@ -105,7 +104,7 @@ def C2S(code):
 
 def S2C(code):
     ServerRandom = ''
-    ApplicationData = ''
+    ApplicationData = []
     while(len(code) != 0):
         try:
             Type = int(code[:2], 16)
@@ -117,7 +116,7 @@ def S2C(code):
                 if Htype == HandshakeType.server_hello:
                     ServerRandom += Handshake_getRandom(val)
             elif Type == ContentType.application_data:
-                ApplicationData += Detail
+                ApplicationData += [Detail]
             code = code[10 + Length * 2:]
         except:
             break
@@ -135,7 +134,7 @@ fs2c.close()
 
 ClientRandom, PremasterSecret, ClientApplicationData = C2S(c2s)
 ServerRandom, ServerApplicationData = S2C(s2c)
-
+#print(ServerApplicationData)
 if (ClientRandom == '' or PremasterSecret == '' or ClientApplicationData == '' or
             ServerRandom == '' or ServerApplicationData == ''):
     print('Error')
@@ -147,13 +146,16 @@ MasterSecret = tls_prf(bytes.fromhex(PremasterSecret), b'master secret',
 KeyBlock = tls_prf(bytes.fromhex(MasterSecret), b'key expansion', bytes.fromhex(ServerRandom + ClientRandom), 72)
 ServerWriteKey = KeyBlock[mac_key_length * 2 + enc_key_length:mac_key_length * 2 + enc_key_length * 2].hex()
 ClientWriteKey = KeyBlock[mac_key_length * 2:mac_key_length * 2 + enc_key_length].hex()
-ServerPlaintext = aes128cbc_decrypt(bytes.fromhex(ServerWriteKey), bytes.fromhex(ServerApplicationData)[:16],
-                                    bytes.fromhex(ServerApplicationData)[16:])
-ClientPlaintext = aes128cbc_decrypt(bytes.fromhex(ClientWriteKey), bytes.fromhex(ClientApplicationData)[:16],
-                                    bytes.fromhex(ClientApplicationData)[16:])
-
-ServerPlaintext = ServerPlaintext[:-(21 + int(ServerPlaintext.hex()[-2:], 16))]
-ClientPlaintext = ClientPlaintext[:-(21 + int(ClientPlaintext.hex()[-2:], 16))]
+ServerPlaintext = b''
+for each in ServerApplicationData :
+    temp = aes128cbc_decrypt(bytes.fromhex(ServerWriteKey), bytes.fromhex(each)[:16],
+                      bytes.fromhex(each)[16:])
+    ServerPlaintext += temp[:-(21 + int(temp.hex()[-2:], 16))]
+ClientPlaintext = b''
+for each in ClientApplicationData :
+    temp = aes128cbc_decrypt(bytes.fromhex(ClientWriteKey), bytes.fromhex(each)[:16],
+                                    bytes.fromhex(each)[16:])
+    ClientPlaintext = temp[:-(21 + int(temp.hex()[-2:], 16))]
 
 output = open(pspt, 'wb')
 output.write(ServerPlaintext)
